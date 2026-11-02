@@ -39,7 +39,6 @@
 
 ### 👷 Check out what I'm currently working on
 
-- [Esegnorelli/Esegnorelli](https://github.com/Esegnorelli/Esegnorelli)
 - [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
 - [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · Next.js + Supabase + Vercel
 - [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
@@ -47,7 +46,6 @@
 
 ### 🌱 My latest projects
 
-- [Esegnorelli/Esegnorelli](https://github.com/Esegnorelli/Esegnorelli)
 - [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
 - [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
 - [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks)

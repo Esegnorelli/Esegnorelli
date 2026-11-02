@@ -47,7 +47,12 @@ def own_repos(username: str, token: str, sort: str) -> list:
         f"/users/{quote(username)}/repos?sort={sort}&direction=desc&per_page=100&type=owner",
         token,
     ) or []
-    visible = [repo for repo in repos if not repo.get("fork") and not repo.get("private")]
+    visible = [
+        repo for repo in repos
+        if not repo.get("fork")
+        and not repo.get("private")
+        and repo.get("name", "").lower() != username.lower()
+    ]
     return visible
 
 
