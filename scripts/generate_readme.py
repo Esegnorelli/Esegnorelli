@@ -14,6 +14,10 @@ API = "https://api.github.com"
 ROOT = Path(__file__).resolve().parent.parent
 
 
+class FetchError(Exception):
+    pass
+
+
 def fetch(path: str, token: str):
     url = path if path.startswith("http") else f"{API}{path}"
     headers = {
@@ -28,8 +32,7 @@ def fetch(path: str, token: str):
         with urlopen(req, timeout=30) as response:
             return json.load(response)
     except (HTTPError, URLError, json.JSONDecodeError) as exc:
-        print(f"Warning: {url} — {exc}", file=sys.stderr)
-        return None
+        raise FetchError(f"{url} — {exc}") from exc
 
 
 def bullet_repo(repo: dict) -> str:
@@ -46,7 +49,7 @@ def own_repos(username: str, token: str, sort: str) -> list:
     repos = fetch(
         f"/users/{quote(username)}/repos?sort={sort}&direction=desc&per_page=100&type=owner",
         token,
-    ) or []
+    )
     visible = [
         repo for repo in repos
         if not repo.get("fork")
@@ -68,15 +71,24 @@ def latest_projects(username: str, token: str) -> str:
 
 def recent_prs(username: str, token: str) -> str:
     since = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
-    query = quote(f"author:{username} type:pr created:>={since}")
-    data = fetch(
-        f"/search/issues?q={query}&sort=created&order=desc&per_page=5",
-        token,
-    )
+    query = quote(f"author:{username} type:pr is:public created:>={since}")
+    try:
+        data = fetch(
+            f"/search/issues?q={query}&sort=created&order=desc&per_page=5",
+            token,
+        )
+    except FetchError as exc:
+        print(f"Warning: {exc}", file=sys.stderr)
+        data = None
     items = (data or {}).get("items", []) if isinstance(data, dict) else []
 
     if not items:
-        events = fetch(f"/users/{quote(username)}/events/public?per_page=100", token) or []
+        try:
+            events = fetch(f"/users/{quote(username)}/events/public?per_page=100", token)
+        except FetchError:
+            if data is None:
+                raise
+            events = []
         for event in events:
             if event.get("type") != "PullRequestEvent":
                 continue
@@ -106,7 +118,7 @@ def recent_stars(username: str, token: str) -> str:
     stars = fetch(
         f"/users/{quote(username)}/starred?sort=created&direction=desc&per_page=5",
         token,
-    ) or []
+    )
     lines = []
     for repo in stars[:5]:
         if isinstance(repo, dict) and repo.get("full_name"):
@@ -124,12 +136,16 @@ def main() -> int:
         return 1
 
     content = template.read_text(encoding="utf-8")
-    replacements = {
-        "{{WORKING_ON}}": working_on(username, token),
-        "{{LATEST_PROJECTS}}": latest_projects(username, token),
-        "{{RECENT_PRS}}": recent_prs(username, token),
-        "{{RECENT_STARS}}": recent_stars(username, token),
-    }
+    try:
+        replacements = {
+            "{{WORKING_ON}}": working_on(username, token),
+            "{{LATEST_PROJECTS}}": latest_projects(username, token),
+            "{{RECENT_PRS}}": recent_prs(username, token),
+            "{{RECENT_STARS}}": recent_stars(username, token),
+        }
+    except FetchError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     for key, value in replacements.items():
         if key not in content:
             print(f"Error: {key} missing from template.", file=sys.stderr)
