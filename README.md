@@ -44,11 +44,17 @@
 
 ### 👷 Check out what I'm currently working on
 
-- No public activity yet.
+- [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
+- [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · Next.js + Supabase + Vercel
+- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
+- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks)
 
 ### 🌱 My latest projects
 
-- No public repositories yet.
+- [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
+- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
+- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks)
+- [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · Next.js + Supabase + Vercel
 
 ### 🔨 My recent Pull Requests
 
@@ -56,7 +62,11 @@
 
 ### ⭐ Recent Stars
 
-- No recent stars.
+- [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) - The agent that grows with you
+- [openclaw/openclaw](https://github.com/openclaw/openclaw) - The AI that really does things. Any OS. Any Platform. The lobster way. 🦞
+- [omerxx/catppuccin-tmux](https://github.com/omerxx/catppuccin-tmux) - 💽 Soothing pastel theme for Tmux!
+- [code-yeongyu/oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) - OmO: Just type "mass ulw" keyword with your prompt. Now you are the master of graph engineering.
+- [luizomf/otaviomiranda.com.br](https://github.com/luizomf/otaviomiranda.com.br) - My personal site and blog. All code, posts, and history are open.
 
 ### 📫 How to reach me:
   - GitHub    : <https://github.com/Esegnorelli>
