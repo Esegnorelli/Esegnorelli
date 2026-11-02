@@ -25,47 +25,15 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Generate metrics
-        uses: lowlighter/metrics@65836723097537a54cd8eb90f61839426b4266b6 # v3.34
-        with:
-          # A classic PAT in GH_PAT is required. GITHUB_TOKEN only sees this
-          # repository, so the metrics card stays at 1 repo and Python until then.
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          user: ${{ github.repository_owner }}
-          template: classic
-          base: header, repositories, metadata
-          filename: github-metrics.svg
-          output_action: none
-          config_timezone: America/Sao_Paulo
-          config_display: large
-          repositories_forks: yes
-          repositories_affiliations: owner
-          plugin_languages: yes
-          plugin_languages_ignored: html, css, dockerfile, makefile
-          plugin_languages_limit: 8
-          plugin_isocalendar: yes
-          plugin_isocalendar_duration: full-year
-          plugin_stars: yes
-          plugin_stars_limit: 4
-
-      - name: Place metrics svg
-        run: |
-          mkdir -p assets
-          src=""
-          for candidate in metrics_renders/github-metrics.svg /metrics_renders/github-metrics.svg; do
-            if [ -f "$candidate" ]; then
-              src=$candidate
-              break
-            fi
-          done
-          if [ -z "$src" ]; then
-            src=$(find metrics_renders /metrics_renders -name 'github-metrics.svg' -print -quit 2>/dev/null || true)
-          fi
-          if [ -z "$src" ]; then
-            echo "metrics svg was not rendered" >&2
-            exit 1
-          fi
-          cp "$src" assets/github-metrics.svg
+      - name: Render hero and dashboard
+        env:
+          # GH_PAT (classic, repo scope) lets the dashboard count private
+          # commits without naming the repositories. GITHUB_TOKEN alone only
+          # sees public ones, and the footnote says so.
+          GH_USERNAME: ${{ github.repository_owner }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/render_dashboard.py
 
       - name: Generate README
         env:
@@ -78,7 +46,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add README.md assets/github-metrics.svg
+          git add README.md assets/hero.svg assets/painel.svg
           if ! git diff --cached --quiet; then
             git commit -m "🔄 Auto-update profile"
             git pull --rebase origin "$GITHUB_REF_NAME"
