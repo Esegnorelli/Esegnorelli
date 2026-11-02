@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Render hero and dashboard
+      - name: Render dashboard
         env:
           # GH_PAT (classic, repo scope) lets the dashboard count private
           # commits without naming the repositories. GITHUB_TOKEN alone only
@@ -46,7 +46,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add README.md assets/hero.svg assets/painel.svg
+          git add README.md assets/painel.svg
           if ! git diff --cached --quiet; then
             git commit -m "🔄 Auto-update profile"
             git pull --rebase origin "$GITHUB_REF_NAME"
