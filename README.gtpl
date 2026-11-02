@@ -4,7 +4,7 @@ Antes de programar, trabalhei com análise de dados na Endosul, vendas na Kipel 
 
 Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): fiz a barra [omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) e o tema [omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme).
 
-<img src="assets/painel.svg" width="100%" alt="Painel dos últimos 12 meses: commits, dias com commits, sequências, commits por semana, horário dos commits, linguagens e trajetória profissional (Endosul, Kipel, McDonald's, Hora do Pastel e BGPF Group). Atualizado a cada 6 horas." />
+<img src="assets/painel.svg" width="100%" alt="Painel dos últimos 12 meses: calendário de contribuições, visão geral da atividade, horário dos commits, linguagens, trajetória profissional (Endosul, Kipel, McDonald's, Hora do Pastel e BGPF Group) e formação (FSG, Feevale e UFBRA). Atualizado a cada 6 horas." />
 
 ### Projetos públicos
 

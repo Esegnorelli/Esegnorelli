@@ -43,10 +43,18 @@ CAREER = [
     (2021.00, None, "Hora do Pastel", "analista de dados e programador"),
     (2021.00, None, "BGPF Group", "analista administrativo"),
 ]
+# Degrees: five years each, ending at graduation. UFBRA is in progress (None = today);
+# its semester is counted from the start month so the label stays current.
 DEGREES = [
-    (2011.42, 2016.58, "FSG", "bacharel em Administração"),
-    (2016.00, 2022.58, "Feevale", "tecnólogo em Processos Gerenciais"),
+    (2011.58, 2016.58, "FSG", "bacharel em Administração"),
+    (2017.58, 2022.58, "Feevale", "tecnólogo em Processos Gerenciais"),
+    (2026.08, None, "UFBRA", "Sistemas de Informação"),
 ]
+
+
+def semester(start: float, today: date) -> int:
+    months = (today.year - int(start)) * 12 + today.month - 1 - round((start % 1) * 12)
+    return max(1, min(8, months // 6 + 1))
 
 W = 720
 PAD = 16
@@ -85,6 +93,48 @@ PUBLIC_REPOS = ("query($login:String!,$after:String){user(login:$login){reposito
                 "after:$after,isFork:false,privacy:PUBLIC,ownerAffiliations:[OWNER],"
                 "orderBy:{field:PUSHED_AT,direction:DESC}){" + REPO_FIELDS + "}}}")
 SAFE_ID = re.compile(r"^[A-Za-z0-9_=-]+$")
+SAFE_LOGIN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
+SEARCH = ("query($q:String!,$after:String){search(query:$q,type:ISSUE,first:100,after:$after){issueCount "
+          "pageInfo{hasNextPage endCursor} nodes{...on PullRequest{createdAt repository{id isPrivate}} "
+          "...on Issue{createdAt repository{id isPrivate}}}}}")
+CREATED_OWN = ("query($after:String){viewer{repositories(first:100,after:$after,isFork:false,ownerAffiliations:[OWNER],"
+               "orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{createdAt}}}}")
+CREATED_PUBLIC = ("query($login:String!,$after:String){user(login:$login){repositories(first:100,after:$after,"
+                  "isFork:false,privacy:PUBLIC,ownerAffiliations:[OWNER],orderBy:{field:CREATED_AT,direction:DESC})"
+                  "{pageInfo{hasNextPage endCursor} nodes{createdAt}}}}")
+# Names come only from a PUBLIC-privacy query, so no private name can reach the image.
+PUBLIC_ORGS = ("query($login:String!){user(login:$login){repositoriesContributedTo(first:100,privacy:PUBLIC,"
+               "includeUserRepositories:true,contributionTypes:[COMMIT,PULL_REQUEST,ISSUE,PULL_REQUEST_REVIEW])"
+               "{nodes{owner{__typename login}}}}}")
+
+
+def search_all(query: str, token: str):
+    """Return (total count, [(createdAt, repo id, is private)]) for an issue/PR search."""
+    found, cursor, total = [], None, 0
+    while True:
+        page = gql(SEARCH, {"q": query, "after": cursor}, token)["search"]
+        total = page["issueCount"]
+        for node in page["nodes"]:
+            if node and node.get("createdAt"):
+                repo = node.get("repository") or {}
+                found.append((node["createdAt"], repo.get("id"), bool(repo.get("isPrivate"))))
+        if not page["pageInfo"]["hasNextPage"] or len(found) >= 1000:
+            return total, found
+        cursor = page["pageInfo"]["endCursor"]
+
+
+def created_since(since_iso: str, private_ok: bool, username: str, token: str) -> list:
+    stamps, cursor = [], None
+    while True:
+        if private_ok:
+            page = gql(CREATED_OWN, {"after": cursor}, token)["viewer"]["repositories"]
+        else:
+            page = gql(CREATED_PUBLIC, {"login": username, "after": cursor}, token)["user"]["repositories"]
+        fresh = [r["createdAt"] for r in page["nodes"] if r["createdAt"] >= since_iso]
+        stamps.extend(fresh)
+        if len(fresh) < len(page["nodes"]) or not page["pageInfo"]["hasNextPage"]:
+            return stamps
+        cursor = page["pageInfo"]["endCursor"]
 
 
 def history_block(alias: str, repo_id: str, cursor) -> str:
@@ -134,13 +184,26 @@ def fetch(username: str, token: str) -> dict:
             if history["pageInfo"]["hasNextPage"]:
                 pending.append((rid, history["pageInfo"]["endCursor"]))
 
+    if not SAFE_LOGIN.match(username):
+        raise FetchError("unexpected username")
+    day = since.date().isoformat()
+    scope = "" if private_ok else " is:public"
+    pr_total, prs = search_all(f"author:{username} is:pr created:>={day}{scope}", token)
+    issue_total, issues = search_all(f"author:{username} is:issue created:>={day}{scope}", token)
+    review_total, reviews = search_all(f"reviewed-by:{username} -author:{username} is:pr updated:>={day}{scope}", token)
+    created = created_since(since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), private_ok, username, token)
+    contributed = gql(PUBLIC_ORGS, {"login": username}, token)["user"]["repositoriesContributedTo"]["nodes"]
+    orgs = sorted({n["owner"]["login"] for n in contributed if n["owner"]["__typename"] == "Organization"})
+
     commits, languages, colors, active_repos, private_repos = [], Counter(), {}, 0, 0
+    touched = {}
     for repo in repos:
         times = [datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(TZ) for s in stamps[repo["id"]]]
         if not times:
             continue
         active_repos += 1
         private_repos += repo["isPrivate"]
+        touched[repo["id"]] = repo["isPrivate"]
         commits.extend(times)
         edges = [e for e in repo["languages"]["edges"] if e["node"]["name"] not in IGNORED]
         size = sum(e["size"] for e in edges)
@@ -150,13 +213,23 @@ def fetch(username: str, token: str) -> dict:
             name = PRETTY.get(e["node"]["name"], e["node"]["name"])
             languages[name] += len(times) * e["size"] / size
             colors[name] = e["node"]["color"] or "#8b949e"
-    return model(now, commits, languages, colors, active_repos, private_repos, private_ok)
+    for _, rid, private in prs + issues + reviews:
+        if rid:
+            touched.setdefault(rid, private)
+
+    def local(stamp):
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(TZ)
+
+    extra = [local(s) for s, _, _ in prs + issues + reviews] + [local(s) for s in created]
+    activity = {"prs": pr_total, "issues": issue_total, "reviews": review_total, "created": len(created)}
+    reach = {"repos": len(touched), "private": sum(touched.values()), "orgs": orgs}
+    return model(now, commits, extra, activity, reach, languages, colors, active_repos, private_repos, private_ok)
 
 
-def model(now, commits, languages, colors, active_repos, private_repos, private_ok) -> dict:
+def model(now, commits, extra, activity, reach, languages, colors, active_repos, private_repos, private_ok) -> dict:
     today = now.date()
     first = today - timedelta(days=364)
-    per_day = Counter(t.date() for t in commits if t.date() >= first)
+    per_day = Counter(t.date() for t in commits + extra if first <= t.date() <= today)
     days = [first + timedelta(days=i) for i in range(365)]
 
     weeks = []
@@ -185,7 +258,9 @@ def model(now, commits, languages, colors, active_repos, private_repos, private_
     langs = named[:5] + ([("Outras", other)] if other >= 0.5 else [])
 
     return {
-        "now": now, "total": total, "weeks": weeks, "active_days": sum(1 for d in days if per_day[d]),
+        "now": now, "first": first, "today": today, "per_day": per_day,
+        "contrib": sum(per_day[d] for d in days), "activity": activity, "reach": reach,
+        "total": total, "weeks": weeks, "active_days": sum(1 for d in days if per_day[d]),
         "longest": longest, "longest_start": best_end - timedelta(days=longest - 1) if best_end else None,
         "longest_end": best_end, "current": current,
         "current_start": anchor - timedelta(days=current - 1) if current else None,
@@ -209,9 +284,9 @@ def day_label(d: date, year: bool = False) -> str:
 # GitHub Primer: dark default, and light default under prefers-color-scheme.
 STYLE = """
 :root{--bg:#0d1117;--border:#3d444d;--fg:#f0f6fc;--muted:#9198a1;--past:#656c76;--grid:#262c36;
---c0:#151b23;--c1:#033a16;--c2:#196c2e;--c3:#2ea043;--c4:#56d364;--cell:rgba(240,246,252,.04)}
+--c0:#151b23;--c1:#033a16;--c2:#196c2e;--c3:#2ea043;--c4:#56d364;--cell:rgba(240,246,252,.04);--ok:#3fb950}
 @media (prefers-color-scheme:light){:root{--bg:#ffffff;--border:#d1d9e0;--fg:#1f2328;--muted:#59636e;
---past:#818b98;--grid:#eff2f5;--c0:#eff2f5;--c1:#aceebb;--c2:#4ac26b;--c3:#2da44e;--c4:#116329;--cell:rgba(31,35,40,.06)}}
+--past:#818b98;--grid:#eff2f5;--c0:#eff2f5;--c1:#aceebb;--c2:#4ac26b;--c3:#2da44e;--c4:#116329;--cell:rgba(31,35,40,.06);--ok:#1a7f37}}
 text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
 font-size:14px;fill:var(--fg)}
 .m{fill:var(--muted)}.s{font-size:12px}.t{font-weight:600}.h{font-size:16px;font-weight:600}
@@ -219,7 +294,9 @@ font-size:14px;fill:var(--fg)}
 .box{fill:var(--bg);stroke:var(--border)}.rule{stroke:var(--border)}.grid{stroke:var(--grid)}
 .past{fill:var(--past)}.edu{fill:none;stroke:var(--muted);stroke-width:1.2}
 .c0{fill:var(--c0)}.c1{fill:var(--c1)}.c2{fill:var(--c2)}.c3{fill:var(--c3)}.c4{fill:var(--c4)}
-.cell{stroke:var(--cell)}.stop3{stop-color:var(--c3)}
+.cell{stroke:var(--cell)}.stop3{stop-color:var(--c3)}.l{font-size:16px}
+.ok{stroke:var(--ok);stroke-width:1.5}.area{fill:var(--c3);fill-opacity:.45;stroke:var(--ok);stroke-width:1.5;stroke-linejoin:round}
+.dot{fill:var(--bg);stroke:var(--ok);stroke-width:1.5}.edu.now{stroke:var(--ok)}
 """
 
 
@@ -241,22 +318,25 @@ def levels(values):
 
 def painel(m: dict) -> str:
     out, defs = [], []
-    y = 0
     now = m["now"]
+    act, reach = m["activity"], m["reach"]
+
+    def rule(y, x1=0, x2=W):
+        out.append(f'<line x1="{x1}" y1="{y}.5" x2="{x2}" y2="{y}.5" class="rule"/>')
 
     # header
     out.append(t(PAD, 30, "Atividade nos últimos 12 meses", "h"))
     out.append(t(W - PAD, 30, f"Atualizado em {day_label(now.date(), True)}", "s m", "end"))
     y = 46
-    out.append(f'<line x1="0" y1="{y}.5" x2="{W}" y2="{y}.5" class="rule"/>')
+    rule(y)
 
     # numbers
     ls, le = m["longest_start"], m["longest_end"]
     stats = [
-        (num(m["total"]), "", "Commits", f"em {m['repos']} repositórios"),
-        (str(m["active_days"]), " de 365", "Dias com commits", f"{round(100 * m['active_days'] / 365)}% do ano"),
+        (num(m["contrib"]), "", "Contribuições", f"{num(m['total'])} commits e {num(act['prs'])} PRs"),
+        (str(m["active_days"]), " de 365", "Dias com contribuições", f"{round(100 * m['active_days'] / 365)}% do ano"),
         (str(m["current"]), " dias" if m["current"] != 1 else " dia", "Sequência atual",
-         f"desde {day_label(m['current_start'])}" if m["current"] else "sem commits hoje ou ontem"),
+         f"desde {day_label(m['current_start'])}" if m["current"] else "sem contribuições hoje ou ontem"),
         (str(m["longest"]), " dias" if m["longest"] != 1 else " dia", "Maior sequência",
          f"{day_label(ls)} a {day_label(le)}" if ls else "nenhuma no período"),
     ]
@@ -270,86 +350,132 @@ def painel(m: dict) -> str:
         out.append(t(x, y + 60, label, "s"))
         out.append(t(x, y + 78, detail, "s m"))
     y += 92
-    out.append(f'<line x1="0" y1="{y}.5" x2="{W}" y2="{y}.5" class="rule"/>')
+    rule(y)
 
-    # commits per week
-    weeks = m["weeks"]
-    counts = [n for _, n in weeks]
-    peak = max(counts) if counts else 0
-    out.append(t(PAD, y + 28, "Commits por semana", "t"))
-    if peak:
-        pw = weeks[counts.index(peak)][0]
-        out.append(t(W - PAD, y + 28, f"Pico: semana de {day_label(pw)}, {num(peak)} commits", "s m", "end"))
-    base, height = y + 108, 62
-    slot = (W - 2 * PAD) / len(weeks)
-    last_label = -99
-    for i, (start, n) in enumerate(weeks):
-        x = PAD + i * slot
-        h = max(height * n / peak, 2) if peak and n else 2
-        cls = "c4" if n == peak and peak else ("c3" if n else "c0")
-        out.append(f'<rect x="{x + 1:.1f}" y="{base - h:.1f}" width="{slot - 3:.1f}" height="{h:.1f}" rx="2" class="{cls}"/>')
-        if start.day <= 7 and x - last_label > 30:
-            out.append(t(x + 1, base + 18, MONTHS[start.month - 1].capitalize(), "s m"))
-            last_label = x
-    y = base + 32
-    out.append(f'<line x1="0" y1="{y}.5" x2="{W}" y2="{y}.5" class="rule"/>')
+    # contribution calendar, drawn like github.com
+    per_day, first, today = m["per_day"], m["first"], m["today"]
+    out.append(t(PAD, y + 30, f"{num(m['contrib'])} contribuições no último ano", "l"))
+    start = first - timedelta(days=(first.weekday() + 1) % 7)
+    columns = (today - start).days // 7 + 1
+    cstep, csize = 12, 10
+    x0, y0 = PAD + 30, y + 62
+    level = levels([per_day[first + timedelta(days=i)] for i in range(365)])
+    sundays = [start + timedelta(days=7 * c) for c in range(columns)]
+    changes = [c for c in range(1, columns) if sundays[c].month != sundays[c - 1].month]
+    label_cols = ([0] if not changes or changes[0] >= 3 else []) + [c for c in changes if c <= columns - 3]
+    for c in label_cols:
+        out.append(t(x0 + c * cstep, y0 - 8, MONTHS[sundays[c].month - 1].capitalize(), "s"))
+    for r, name in ((1, "seg"), (3, "qua"), (5, "sex")):
+        out.append(t(PAD, y0 + r * cstep + 9, name, "s"))
+    for c, sunday in enumerate(sundays):
+        for r in range(7):
+            d = sunday + timedelta(days=r)
+            if first <= d <= today:
+                out.append(f'<rect x="{x0 + c * cstep}" y="{y0 + r * cstep}" width="{csize}" height="{csize}" rx="2" '
+                           f'class="c{level(per_day[d])} cell"/>')
+    ly = y0 + 7 * cstep + 22
+    out.append(t(PAD, ly, "Commits, pull requests, issues e repositórios criados, inclusive em repositórios privados", "s m"))
+    lx = W - PAD - 30 - 5 * cstep
+    out.append(t(lx - 6, ly, "Menos", "s m", "end"))
+    for k in range(5):
+        out.append(f'<rect x="{lx + k * cstep}" y="{ly - 9}" width="{csize}" height="{csize}" rx="2" class="c{k} cell"/>')
+    out.append(t(lx + 5 * cstep + 4, ly, "Mais", "s m"))
+    y = ly + 18
+    rule(y)
 
-    # when: weekday x hour, like the contribution graph
-    split = 412
-    top = y
+    # overview (left) and hours (right)
+    top, half = y, W // 2
+    out.append(t(PAD, y + 28, "Visão geral", "t"))
+    if m["private_ok"]:
+        out.append(t(PAD, y + 47, f"Contribuiu com {reach['repos']} repositórios, {reach['private']} deles privados", "s m"))
+    else:
+        out.append(t(PAD, y + 47, f"Contribuiu com {reach['repos']} repositórios públicos", "s m"))
+    if reach["orgs"]:
+        out.append(t(PAD, y + 65, "Organizações: " + ", ".join("@" + o for o in reach["orgs"][:3]), "s m"))
+    parts = {"Commits": m["total"], "Pull requests": act["prs"], "Issues": act["issues"], "Revisões": act["reviews"]}
+    whole = sum(parts.values()) or 1
+    share = {k: v / whole for k, v in parts.items()}
+    cx, cy, arm = half / 2, y + 158, 62
+
+    def pct_text(k):
+        if not parts[k]:
+            return ""
+        v = 100 * share[k]
+        return "<1%" if v < 0.5 else f"{round(v)}%"
+
+    out.append(f'<line x1="{cx}" y1="{cy - arm}" x2="{cx}" y2="{cy + arm}" class="ok"/>'
+               f'<line x1="{cx - arm}" y1="{cy}" x2="{cx + arm}" y2="{cy}" class="ok"/>')
+    pts = [(cx, cy - arm * share["Revisões"]), (cx + arm * share["Issues"], cy),
+           (cx, cy + arm * share["Pull requests"]), (cx - arm * share["Commits"], cy)]
+    out.append('<polygon points="' + " ".join(f"{px:.1f},{py:.1f}" for px, py in pts) + '" class="area"/>')
+    for px, py in pts:
+        out.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="3" class="dot"/>')
+    labels = [("Revisões", cx, cy - arm - 10, "middle", -16), ("Pull requests", cx, cy + arm + 34, "middle", -16),
+              ("Commits", cx - arm - 10, cy + 14, "end", -16), ("Issues", cx + arm + 10, cy + 14, "start", -16)]
+    for name, lx_, ly_, anchor, up in labels:
+        out.append(t(lx_, ly_, name, "s m", anchor))
+        if pct_text(name):
+            out.append(t(lx_, ly_ + up, pct_text(name), "s m", anchor))
+    left_bottom = cy + arm + 52
+
+    rx = half + PAD
     grid = m["grid"]
-    flat = [v for row in grid for v in row]
-    level = levels(flat)
+    hl = levels([v for row in grid for v in row])
     off = round(100 * m["off_hours"])
-    out.append(t(PAD, y + 28, "Horário dos commits", "t"))
-    out.append(t(PAD, y + 47, f"{off}% fora do horário comercial (seg a sex, 8h às 18h)" if m["total"]
+    out.append(t(rx, y + 28, "Horário dos commits", "t"))
+    out.append(t(rx, y + 47, f"{off}% fora do expediente (seg a sex, 8h às 18h)" if m["total"]
                  else "Sem commits no período", "s m"))
-    gx, gy, step, cell = PAD + 36, y + 62, 13, 10
+    gx, gy, hstep, hcell = rx + 30, y + 66, 12, 10
     for d in range(7):
         if d in (0, 2, 4):
-            out.append(t(PAD, gy + d * step + 9, WEEKDAYS[d], "s m"))
+            out.append(t(rx, gy + d * hstep + 9, WEEKDAYS[d], "s"))
         for h in range(24):
-            out.append(f'<rect x="{gx + h * step}" y="{gy + d * step}" width="{cell}" height="{cell}" rx="2" '
-                       f'class="c{level(grid[d][h])} cell"/>')
+            out.append(f'<rect x="{gx + h * hstep}" y="{gy + d * hstep}" width="{hcell}" height="{hcell}" rx="2" '
+                       f'class="c{hl(grid[d][h])} cell"/>')
     for h in (0, 6, 12, 18):
-        out.append(t(gx + h * step, gy + 7 * step + 14, f"{h}h", "s m"))
-    ly = gy + 7 * step + 36
-    out.append(t(gx + 12 * step - 6, ly, "Menos", "s m", "end"))
+        out.append(t(gx + h * hstep, gy + 7 * hstep + 16, f"{h}h", "s m"))
+    hy = gy + 7 * hstep + 38
+    out.append(t(rx, hy, "Horário de Brasília", "s m"))
+    hx = W - PAD - 30 - 5 * hstep
+    out.append(t(hx - 6, hy, "Menos", "s m", "end"))
     for k in range(5):
-        out.append(f'<rect x="{gx + 12 * step + k * step}" y="{ly - 9}" width="{cell}" height="{cell}" rx="2" class="c{k} cell"/>')
-    out.append(t(gx + 17 * step + 3, ly, "Mais", "s m"))
-    out.append(t(PAD, ly, "Horário de Brasília", "s m"))
+        out.append(f'<rect x="{hx + k * hstep}" y="{hy - 9}" width="{hcell}" height="{hcell}" rx="2" class="c{k} cell"/>')
+    out.append(t(hx + 5 * hstep + 4, hy, "Mais", "s m"))
+    right_bottom = hy + 18
+    y = max(left_bottom, right_bottom)
+    out.append(f'<line x1="{half}.5" y1="{top}" x2="{half}.5" y2="{y}" class="rule"/>')
+    rule(y)
 
     # languages, like a repository's language bar
-    lx, lw = split + PAD, W - split - 2 * PAD
-    out.append(t(lx, y + 28, "Linguagens", "t"))
-    out.append(t(lx, y + 47, "Proporção nos commits do ano", "s m"))
+    out.append(t(PAD, y + 28, "Linguagens", "t"))
+    out.append(t(PAD, y + 47, "Proporção nos commits do ano", "s m"))
     langs, total = m["langs"], m["lang_total"] or 1
-    bar_y = y + 62
-    defs.append(f'<clipPath id="langbar"><rect x="{lx}" y="{bar_y}" width="{lw}" height="8" rx="4"/></clipPath>')
-    cursor = lx
-    segments = []
+    bar_y, bar_w = y + 62, W - 2 * PAD
+    defs.append(f'<clipPath id="langbar"><rect x="{PAD}" y="{bar_y}" width="{bar_w}" height="8" rx="4"/></clipPath>')
+    cursor, segments = float(PAD), []
     for name, n in langs:
-        width = lw * n / total
-        color = m["colors"].get(name, "#8b949e")
+        width = bar_w * n / total
+        color = escape(m["colors"].get(name, "#8b949e"))
         segments.append(f'<rect x="{cursor:.2f}" y="{bar_y}" width="{max(width - 2, 0.5):.2f}" height="8" fill="{color}"/>')
         cursor += width
-    out.append(f'<g clip-path="url(#langbar)"><rect x="{lx}" y="{bar_y}" width="{lw}" height="8" class="c0"/>{"".join(segments)}</g>')
+    out.append(f'<g clip-path="url(#langbar)"><rect x="{PAD}" y="{bar_y}" width="{bar_w}" height="8" class="c0"/>'
+               f'{"".join(segments)}</g>')
+    colw = bar_w / 3
     for i, (name, n) in enumerate(langs):
-        ry = bar_y + 34 + i * 22
-        pct = 100 * n / total
-        color = m["colors"].get(name, "#8b949e")
-        out.append(f'<circle cx="{lx + 4}" cy="{ry - 4.5}" r="4" fill="{color}"/>')
-        out.append(t(lx + 14, ry, name, "t" if i == 0 else ""))
-        out.append(t(W - PAD, ry, f"{pct:.1f}%".replace(".", ","), "s m", "end"))
+        c, r = i % 3, i // 3
+        lx2, ly2 = PAD + c * colw, bar_y + 34 + r * 24
+        color = escape(m["colors"].get(name, "#8b949e"))
+        out.append(f'<circle cx="{lx2 + 4:.1f}" cy="{ly2 - 4.5}" r="4" fill="{color}"/>')
+        out.append(t(lx2 + 14, ly2, name, "t" if i == 0 else ""))
+        out.append(t(lx2 + colw - 24, ly2, f"{100 * n / total:.1f}%".replace(".", ","), "s m", "end"))
     if not langs:
-        out.append(t(lx, bar_y + 34, "Sem dados no período", "s m"))
-    y = max(gy + 7 * step + 52, bar_y + 34 + (len(langs) - 1) * 22 + 20)
-    out.append(f'<line x1="{split}.5" y1="{top}" x2="{split}.5" y2="{y}" class="rule"/>')
-    out.append(f'<line x1="0" y1="{y}.5" x2="{W}" y2="{y}.5" class="rule"/>')
+        out.append(t(PAD, bar_y + 34, "Sem dados no período", "s m"))
+    rows = max(1, (len(langs) + 2) // 3)
+    y = bar_y + 34 + (rows - 1) * 24 + 18
+    rule(y)
 
     # career, as a Gantt chart
-    out.append(t(PAD, y + 28, "Trajetória profissional", "t"))
+    out.append(t(PAD, y + 28, "Trajetória e formação", "t"))
     a0, a1 = 366, W - PAD
     end = now.year + (now.timetuple().tm_yday - 1) / 365
 
@@ -367,31 +493,42 @@ def painel(m: dict) -> str:
     defs.append(f'<linearGradient id="dawn" gradientUnits="userSpaceOnUse" x1="{tx(2021.0):.1f}" x2="{tx(2022.0):.1f}" y1="0" y2="0">'
                 '<stop offset="0" class="stop3" stop-opacity="0"/><stop offset="1" class="stop3"/></linearGradient>')
 
-    def row(base, company, role, x0, x1, kind):
+    def row(base, company, role, xa, xb, kind, xa_year=None, xb_year=None):
         out.append(t(PAD, base, f'{escape(company)}<tspan class="s m" dx="6">{escape(role)}</tspan>', raw=True))
-        width = max(x1 - x0, 3)
+        width = max(xb - xa, 3)
         if kind == "now":
-            out.append(f'<rect x="{x0:.1f}" y="{base - 10}" width="{width:.1f}" height="8" rx="4" fill="url(#dawn)"/>')
+            out.append(f'<rect x="{xa:.1f}" y="{base - 10}" width="{width:.1f}" height="8" rx="4" fill="url(#dawn)"/>')
         elif kind == "edu":
-            out.append(f'<rect x="{x0:.1f}" y="{base - 9.4}" width="{width:.1f}" height="6.8" rx="3.4" class="edu"/>')
+            out.append(f'<rect x="{xa:.1f}" y="{base - 9.4}" width="{width:.1f}" height="6.8" rx="3.4" class="edu"/>')
+            years = round(xb_year - xa_year) if xb_year else 0
+            if years:
+                out.append(t(xb + 6, base - 2, f"{years} anos", "s m"))
+        elif kind == "study":
+            out.append(f'<rect x="{xa:.1f}" y="{base - 9.4}" width="{width:.1f}" height="6.8" rx="3.4" class="edu now"/>')
         else:
-            out.append(f'<rect x="{x0:.1f}" y="{base - 10}" width="{width:.1f}" height="8" rx="4" class="past"/>')
+            out.append(f'<rect x="{xa:.1f}" y="{base - 10}" width="{width:.1f}" height="8" rx="4" class="past"/>')
 
-    for i, (start, stop, company, role) in enumerate(CAREER):
-        row(first_row + i * step_row, company, role, tx(start), tx(stop if stop else end), "past" if stop else "now")
-    for k, (start, stop, school, degree) in enumerate(DEGREES):
-        row(edu_top + k * step_row, school, degree, tx(start), tx(stop), "edu")
+    for i, (begin, stop, company, role) in enumerate(CAREER):
+        row(first_row + i * step_row, company, role, tx(begin), tx(stop if stop else end), "past" if stop else "now")
+    for k, (begin, stop, school, degree) in enumerate(DEGREES):
+        if stop:
+            row(edu_top + k * step_row, school, degree, tx(begin), tx(stop), "edu", begin, stop)
+        else:
+            row(edu_top + k * step_row, school, f"{degree}, {semester(begin, today)}º semestre",
+                tx(begin), tx(end), "study")
     y = bottom + 34
-    out.append(f'<line x1="0" y1="{y}.5" x2="{W}" y2="{y}.5" class="rule"/>')
+    rule(y)
 
-    scope = (f"{m['repos']} repositórios, {m['private']} deles privados" if m["private_ok"]
-             else f"{m['repos']} repositórios públicos")
-    out.append(t(PAD, y + 24, f"Commits no branch principal de {scope}. Atualizado a cada 6 horas.", "s m"))
+    scope = (f"Dados de {reach['repos']} repositórios, {reach['private']} deles privados (sem nomes)"
+             if m["private_ok"] else f"Dados de {reach['repos']} repositórios públicos")
+    out.append(t(PAD, y + 24, f"{scope}. Atualizado a cada 6 horas.", "s m"))
     H = y + 40
 
-    desc = (f"{num(m['total'])} commits nos últimos 12 meses, {m['active_days']} dias com commits, "
+    desc = (f"{num(m['contrib'])} contribuições nos últimos 12 meses ({num(m['total'])} commits, "
+            f"{num(act['prs'])} pull requests, {num(act['issues'])} issues), {m['active_days']} dias com contribuições, "
             f"sequência atual de {m['current']} dias e maior sequência de {m['longest']} dias. "
-            "Trajetória: Endosul, Kipel, McDonald's, Hora do Pastel e BGPF Group.")
+            "Trajetória: Endosul, Kipel, McDonald's, Hora do Pastel e BGPF Group. "
+            "Formação: Administração (FSG), Processos Gerenciais (Feevale) e Sistemas de Informação (UFBRA, em curso).")
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
             f'role="img" aria-labelledby="t d"><title id="t">Painel de atividade de Evandro Segnorelli</title>'
             f'<desc id="d">{escape(desc)}</desc><style>{STYLE}</style><defs>{"".join(defs)}</defs>'
