@@ -1,0 +1,84 @@
+name: Update Profile
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+
+      - name: Generate metrics
+        uses: lowlighter/metrics@65836723097537a54cd8eb90f61839426b4266b6 # v3.34
+        with:
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          user: ${{ github.repository_owner }}
+          template: classic
+          base: header, repositories, metadata
+          filename: github-metrics.svg
+          output_action: none
+          config_timezone: America/Sao_Paulo
+          config_display: large
+          repositories_forks: yes
+          repositories_affiliations: owner
+          plugin_languages: yes
+          plugin_languages_ignored: html, css, dockerfile, makefile
+          plugin_languages_limit: 8
+          plugin_isocalendar: yes
+          plugin_isocalendar_duration: full-year
+          plugin_stars: yes
+          plugin_stars_limit: 4
+
+      - name: Place metrics svg
+        run: |
+          mkdir -p assets
+          src=""
+          for candidate in metrics_renders/github-metrics.svg /metrics_renders/github-metrics.svg; do
+            if [ -f "$candidate" ]; then
+              src=$candidate
+              break
+            fi
+          done
+          if [ -z "$src" ]; then
+            src=$(find metrics_renders /metrics_renders -name 'github-metrics.svg' -print -quit 2>/dev/null || true)
+          fi
+          if [ -z "$src" ]; then
+            echo "metrics svg was not rendered" >&2
+            exit 1
+          fi
+          cp "$src" assets/github-metrics.svg
+
+      - name: Generate README
+        env:
+          GH_USERNAME: ${{ github.repository_owner }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/generate_readme.py
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md assets/github-metrics.svg
+          if ! git diff --cached --quiet; then
+            git commit -m "🔄 Auto-update profile"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi
