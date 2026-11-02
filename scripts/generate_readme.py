@@ -61,12 +61,12 @@ def own_repos(username: str, token: str, sort: str) -> list:
 
 def working_on(username: str, token: str) -> str:
     lines = [bullet_repo(repo) for repo in own_repos(username, token, "pushed")[:5]]
-    return "\n".join(lines) + "\n" if lines else "- No public activity yet.\n"
+    return "\n".join(lines) + "\n" if lines else "- Nada público mexido ainda.\n"
 
 
 def latest_projects(username: str, token: str) -> str:
     lines = [bullet_repo(repo) for repo in own_repos(username, token, "created")[:5]]
-    return "\n".join(lines) + "\n" if lines else "- No public repositories yet.\n"
+    return "\n".join(lines) + "\n" if lines else "- Nenhum repositório público ainda.\n"
 
 
 def recent_prs(username: str, token: str) -> str:
@@ -109,9 +109,9 @@ def recent_prs(username: str, token: str) -> str:
         repo = f"{parts[-2]}/{parts[-1]}" if len(parts) >= 3 else "repository"
         title = " ".join((item.get("title") or "Pull request").split())
         lines.append(
-            f"- [{title}]({item['html_url']}) on [{repo}](https://github.com/{repo})"
+            f"- [{title}]({item['html_url']}) em [{repo}](https://github.com/{repo})"
         )
-    return "\n".join(lines) + "\n" if lines else "- No recent pull requests.\n"
+    return "\n".join(lines) + "\n" if lines else "- Nenhum pull request recente.\n"
 
 
 def recent_stars(username: str, token: str) -> str:
@@ -123,7 +123,7 @@ def recent_stars(username: str, token: str) -> str:
     for repo in stars[:5]:
         if isinstance(repo, dict) and repo.get("full_name"):
             lines.append(bullet_repo(repo))
-    return "\n".join(lines) + "\n" if lines else "- No recent stars.\n"
+    return "\n".join(lines) + "\n" if lines else "- Nenhuma estrela recente.\n"
 
 
 def main() -> int:
