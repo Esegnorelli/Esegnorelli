@@ -35,7 +35,12 @@
 
 ### GitHub Stats
 
-<p align="left"><img src="assets/github-metrics.svg" alt="GitHub stats" /></p>
+<p align="left">
+  <img src="https://github-stats-extended.vercel.app/api?username=Esegnorelli&show_icons=true&hide_border=true&bg_color=141311&title_color=d6b17a&text_color=f5f1ea&icon_color=d6b17a" alt="GitHub stats" />
+  <img src="https://github-stats-extended.vercel.app/api/top-langs/?username=Esegnorelli&layout=compact&hide_border=true&bg_color=141311&title_color=d6b17a&text_color=f5f1ea&langs_count=6" alt="Most used languages" />
+</p>
+
+<p align="left"><img src="assets/github-metrics.svg" alt="GitHub activity" /></p>
 
 ### 👷 Check out what I'm currently working on
 
