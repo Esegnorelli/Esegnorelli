@@ -25,6 +25,7 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 
 #### Pull requests recentes
 
+- [Ilha 1.2.0: ícones embutidos e pílula sem passo de instalação](https://github.com/Esegnorelli/omarchy-ilha/pull/1) em [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha)
 - [Priority: live OmaCapy page shows a broken tofu preview](https://github.com/omacom/omarchy-plugin-marketplace/pull/120) em [omacom/omarchy-plugin-marketplace](https://github.com/omacom/omarchy-plugin-marketplace)
 
 #### Estrelas recentes
