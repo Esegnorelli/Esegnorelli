@@ -13,7 +13,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from html import escape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -92,8 +92,8 @@ OWN_REPOS = ("query($after:String){viewer{repositories(first:100,after:$after,is
 PUBLIC_REPOS = ("query($login:String!,$after:String){user(login:$login){repositories(first:100,"
                 "after:$after,isFork:false,privacy:PUBLIC,ownerAffiliations:[OWNER],"
                 "orderBy:{field:PUSHED_AT,direction:DESC}){" + REPO_FIELDS + "}}}")
-SAFE_ID = re.compile(r"^[A-Za-z0-9_=-]+$")
-SAFE_LOGIN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
+SAFE_ID = re.compile(r"[A-Za-z0-9_=-]+")
+SAFE_LOGIN = re.compile(r"[A-Za-z0-9-]{1,39}")
 SEARCH = ("query($q:String!,$after:String){search(query:$q,type:ISSUE,first:100,after:$after){issueCount "
           "pageInfo{hasNextPage endCursor} nodes{...on PullRequest{createdAt repository{id isPrivate}} "
           "...on Issue{createdAt repository{id isPrivate}}}}}")
@@ -138,7 +138,7 @@ def created_since(since_iso: str, private_ok: bool, username: str, token: str) -
 
 
 def history_block(alias: str, repo_id: str, cursor) -> str:
-    if not SAFE_ID.match(repo_id):
+    if not SAFE_ID.fullmatch(repo_id):
         raise FetchError("unexpected repository id")
     after = f",after:{json.dumps(cursor)}" if cursor else ""
     return (f'{alias}:node(id:"{repo_id}"){{...on Repository{{defaultBranchRef{{target{{...on Commit{{'
@@ -146,9 +146,21 @@ def history_block(alias: str, repo_id: str, cursor) -> str:
             "{pageInfo{hasNextPage endCursor} nodes{authoredDate}}}}}}}")
 
 
+def year_start(now: datetime) -> date:
+    """First day of the calendar: the 365 days ending today."""
+    return now.date() - timedelta(days=364)
+
+
+def utc(stamp: datetime) -> str:
+    """GitHub's timestamp format, so string comparison matches time order."""
+    return stamp.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def fetch(username: str, token: str) -> dict:
     now = datetime.now(TZ)
-    since = (now - timedelta(days=365)).replace(microsecond=0)
+    # Every query starts at local midnight of the calendar's first day, so the
+    # totals cover exactly the days the calendar draws.
+    since = utc(datetime.combine(year_start(now), time.min, tzinfo=TZ))
     viewer = gql("query{viewer{login}}", {}, token)["viewer"]["login"]
     user = gql("query($l:String!){user(login:$l){id}}", {"l": username}, token)["user"]
     if not user:
@@ -161,7 +173,7 @@ def fetch(username: str, token: str) -> dict:
             page = gql(OWN_REPOS, {"after": cursor}, token)["viewer"]["repositories"]
         else:
             page = gql(PUBLIC_REPOS, {"login": username, "after": cursor}, token)["user"]["repositories"]
-        fresh = [r for r in page["nodes"] if r["pushedAt"] and r["pushedAt"] >= since.isoformat()]
+        fresh = [r for r in page["nodes"] if r["pushedAt"] and r["pushedAt"] >= since]
         repos.extend(fresh)
         if len(fresh) < len(page["nodes"]) or not page["pageInfo"]["hasNextPage"]:
             break
@@ -173,7 +185,7 @@ def fetch(username: str, token: str) -> dict:
         batch, pending = pending[:20], pending[20:]
         blocks = "".join(history_block(f"r{i}", rid, cur) for i, (rid, cur) in enumerate(batch))
         query = "query($uid:ID!,$since:GitTimestamp!){" + blocks + "}"
-        data = gql(query, {"uid": user["id"], "since": since.isoformat()}, token)
+        data = gql(query, {"uid": user["id"], "since": since}, token)
         for i, (rid, _) in enumerate(batch):
             node = data.get(f"r{i}") or {}
             target = ((node.get("defaultBranchRef") or {}).get("target")) or {}
@@ -184,14 +196,13 @@ def fetch(username: str, token: str) -> dict:
             if history["pageInfo"]["hasNextPage"]:
                 pending.append((rid, history["pageInfo"]["endCursor"]))
 
-    if not SAFE_LOGIN.match(username):
+    if not SAFE_LOGIN.fullmatch(username):
         raise FetchError("unexpected username")
-    day = since.date().isoformat()
     scope = "" if private_ok else " is:public"
-    pr_total, prs = search_all(f"author:{username} is:pr created:>={day}{scope}", token)
-    issue_total, issues = search_all(f"author:{username} is:issue created:>={day}{scope}", token)
-    review_total, reviews = search_all(f"reviewed-by:{username} -author:{username} is:pr updated:>={day}{scope}", token)
-    created = created_since(since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), private_ok, username, token)
+    pr_total, prs = search_all(f"author:{username} is:pr created:>={since}{scope}", token)
+    issue_total, issues = search_all(f"author:{username} is:issue created:>={since}{scope}", token)
+    review_total, reviews = search_all(f"reviewed-by:{username} -author:{username} is:pr updated:>={since}{scope}", token)
+    created = created_since(since, private_ok, username, token)
     contributed = gql(PUBLIC_ORGS, {"login": username}, token)["user"]["repositoriesContributedTo"]["nodes"]
     orgs = sorted({n["owner"]["login"] for n in contributed if n["owner"]["__typename"] == "Organization"})
 
@@ -228,14 +239,9 @@ def fetch(username: str, token: str) -> dict:
 
 def model(now, commits, extra, activity, reach, languages, colors, active_repos, private_repos, private_ok) -> dict:
     today = now.date()
-    first = today - timedelta(days=364)
+    first = year_start(now)
     per_day = Counter(t.date() for t in commits + extra if first <= t.date() <= today)
     days = [first + timedelta(days=i) for i in range(365)]
-
-    weeks = []
-    for i in range(52):
-        start = today - timedelta(days=7 * (52 - i) - 1)
-        weeks.append((start, sum(per_day[start + timedelta(days=k)] for k in range(7))))
 
     longest, run, best_end = 0, 0, None
     for day in days:
@@ -260,7 +266,7 @@ def model(now, commits, extra, activity, reach, languages, colors, active_repos,
     return {
         "now": now, "first": first, "today": today, "per_day": per_day,
         "contrib": sum(per_day[d] for d in days), "activity": activity, "reach": reach,
-        "total": total, "weeks": weeks, "active_days": sum(1 for d in days if per_day[d]),
+        "total": total, "active_days": sum(1 for d in days if per_day[d]),
         "longest": longest, "longest_start": best_end - timedelta(days=longest - 1) if best_end else None,
         "longest_end": best_end, "current": current,
         "current_start": anchor - timedelta(days=current - 1) if current else None,
