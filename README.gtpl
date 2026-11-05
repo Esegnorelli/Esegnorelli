@@ -1,6 +1,6 @@
 # Esegnorelli | Devlinks
 
-**Evandro Segnorelli** · analista de dados e programador · SQL, TypeScript, dashboards e automação
+**Evandro Segnorelli**
 
 [GitHub](https://github.com/Esegnorelli) · [LinkedIn](https://linkedin.com/in/Esegnorelli) · [Instagram](https://instagram.com/Esegnorelli) · [Twitter](https://twitter.com/Esegnorelli) · [Devlinks](https://esegnorelli.github.io/devlinks/)
 
@@ -15,7 +15,7 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 ### Stack
 
 - **Dados:** SQL, PostgreSQL (PL/pgSQL), Supabase, dashboards de operação
-- **Web:** TypeScript, Next.js, JavaScript, HTML e CSS
+- **Web:** TypeScript, React, Vite, Tailwind CSS, JavaScript, HTML e CSS
 - **Automação:** Python, GitHub Actions
 - **Desktop:** Linux, Hyprland, [Omarchy](https://omarchy.org), QML
 
@@ -25,9 +25,6 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 <details>
 <summary>Mais atividade</summary>
 
-#### Repositórios por data de criação
-
-{{LATEST_PROJECTS}}
 #### Pull requests recentes
 
 {{RECENT_PRS}}

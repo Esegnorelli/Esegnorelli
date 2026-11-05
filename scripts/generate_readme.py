@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 API = "https://api.github.com"
 ROOT = Path(__file__).resolve().parent.parent
+HOMEPAGE_RE = re.compile(r"^https?://[^\s<>()\[\]\\`]+$")
 
 
 class FetchError(Exception):
@@ -48,13 +49,23 @@ def md(text: str) -> str:
     return re.sub(r"(?i)\bwww\.", r"www\\.", text)
 
 
-def bullet_repo(repo: dict) -> str:
+def bullet_repo(repo: dict, details: bool = False) -> str:
     name = md(repo.get("full_name") or repo.get("name") or "repository")
     url = repo.get("html_url") or ""
     desc = md(repo.get("description"))
     line = f"- [{name}]({url})"
     if desc:
         line += f" - {desc}"
+    if details:
+        meta = []
+        language = md(repo.get("language"))
+        if language:
+            meta.append(language)
+        homepage = (repo.get("homepage") or "").strip()
+        if HOMEPAGE_RE.match(homepage):
+            meta.append(f"[site]({homepage})")
+        if meta:
+            line += " · " + " · ".join(meta)
     return line
 
 
@@ -73,13 +84,8 @@ def own_repos(username: str, token: str, sort: str) -> list:
 
 
 def working_on(username: str, token: str) -> str:
-    lines = [bullet_repo(repo) for repo in own_repos(username, token, "pushed")[:5]]
+    lines = [bullet_repo(repo, details=True) for repo in own_repos(username, token, "pushed")[:5]]
     return "\n".join(lines) + "\n" if lines else "- Nada público mexido ainda.\n"
-
-
-def latest_projects(username: str, token: str) -> str:
-    lines = [bullet_repo(repo) for repo in own_repos(username, token, "created")[:5]]
-    return "\n".join(lines) + "\n" if lines else "- Nenhum repositório público ainda.\n"
 
 
 def recent_prs(username: str, token: str) -> str:
@@ -159,7 +165,6 @@ def main() -> int:
     try:
         replacements = {
             "{{WORKING_ON}}": working_on(username, token),
-            "{{LATEST_PROJECTS}}": latest_projects(username, token),
             "{{RECENT_PRS}}": recent_prs(username, token),
             "{{RECENT_STARS}}": recent_stars(username, token),
         }
