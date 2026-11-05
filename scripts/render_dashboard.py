@@ -97,6 +97,11 @@ SAFE_LOGIN = re.compile(r"[A-Za-z0-9-]{1,39}")
 SEARCH = ("query($q:String!,$after:String){search(query:$q,type:ISSUE,first:100,after:$after){issueCount "
           "pageInfo{hasNextPage endCursor} nodes{...on PullRequest{createdAt repository{id isPrivate}} "
           "...on Issue{createdAt repository{id isPrivate}}}}}")
+# Review contributions carry the day the review happened; a search by
+# reviewed-by only knows when the pull request was opened.
+REVIEWS = ("query($login:String!,$from:DateTime!,$to:DateTime!,$after:String){user(login:$login){"
+           "contributionsCollection(from:$from,to:$to){pullRequestReviewContributions(first:100,after:$after){"
+           "pageInfo{hasNextPage endCursor} nodes{occurredAt pullRequest{repository{id isPrivate}}}}}}}")
 CREATED_OWN = ("query($after:String){viewer{repositories(first:100,after:$after,isFork:false,ownerAffiliations:[OWNER],"
                "orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{createdAt}}}}")
 CREATED_PUBLIC = ("query($login:String!,$after:String){user(login:$login){repositories(first:100,after:$after,"
@@ -120,6 +125,22 @@ def search_all(query: str, token: str):
                 found.append((node["createdAt"], repo.get("id"), bool(repo.get("isPrivate"))))
         if not page["pageInfo"]["hasNextPage"] or len(found) >= 1000:
             return total, found
+        cursor = page["pageInfo"]["endCursor"]
+
+
+def reviews_since(username: str, since: str, until: str, private_ok: bool, token: str) -> list:
+    """Return [(occurredAt, repo id, is private)] for the reviews the user made in the window."""
+    found, cursor = [], None
+    while True:
+        variables = {"login": username, "from": since, "to": until, "after": cursor}
+        page = gql(REVIEWS, variables, token)["user"]["contributionsCollection"]["pullRequestReviewContributions"]
+        for node in page["nodes"]:
+            repo = ((node or {}).get("pullRequest") or {}).get("repository") or {}
+            visible = private_ok or (repo and not repo.get("isPrivate"))
+            if node and node.get("occurredAt") and visible:
+                found.append((node["occurredAt"], repo.get("id"), bool(repo.get("isPrivate"))))
+        if not page["pageInfo"]["hasNextPage"]:
+            return found
         cursor = page["pageInfo"]["endCursor"]
 
 
@@ -201,7 +222,8 @@ def fetch(username: str, token: str) -> dict:
     scope = "" if private_ok else " is:public"
     pr_total, prs = search_all(f"author:{username} is:pr created:>={since}{scope}", token)
     issue_total, issues = search_all(f"author:{username} is:issue created:>={since}{scope}", token)
-    review_total, reviews = search_all(f"reviewed-by:{username} -author:{username} is:pr updated:>={since}{scope}", token)
+    reviews = reviews_since(username, since, utc(now), private_ok, token)
+    review_total = len(reviews)
     created = created_since(since, private_ok, username, token)
     contributed = gql(PUBLIC_ORGS, {"login": username}, token)["user"]["repositoriesContributedTo"]["nodes"]
     orgs = sorted({n["owner"]["login"] for n in contributed if n["owner"]["__typename"] == "Organization"})
