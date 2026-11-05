@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -35,10 +36,22 @@ def fetch(path: str, token: str):
         raise FetchError(f"{url} — {exc}") from exc
 
 
+def md(text: str) -> str:
+    """One line of third-party text, safe to put in Markdown.
+
+    Descriptions and titles are written by other people, so brackets, angle
+    brackets and emphasis marks are escaped, and bare URLs are kept from
+    turning into links: no image, link or HTML can be smuggled into the profile.
+    """
+    text = re.sub(r"([\\`*_\[\]()<>~|])", r"\\\1", " ".join((text or "").split()))
+    text = re.sub(r"(?i)\b((?:https?|ftp)):", r"\1\\:", text)
+    return re.sub(r"(?i)\bwww\.", r"www\\.", text)
+
+
 def bullet_repo(repo: dict) -> str:
-    name = repo.get("full_name") or repo.get("name") or "repository"
+    name = md(repo.get("full_name") or repo.get("name") or "repository")
     url = repo.get("html_url") or ""
-    desc = " ".join((repo.get("description") or "").split())
+    desc = md(repo.get("description"))
     line = f"- [{name}]({url})"
     if desc:
         line += f" - {desc}"
@@ -114,7 +127,7 @@ def recent_prs(username: str, token: str) -> str:
     for item in items[:5]:
         parts = item.get("repository_url", "").rstrip("/").rsplit("/", 2)
         repo = f"{parts[-2]}/{parts[-1]}" if len(parts) >= 3 else "repository"
-        title = " ".join((item.get("title") or "Pull request").split())
+        title = md(item.get("title") or "Pull request")
         lines.append(
             f"- [{title}]({item['html_url']}) em [{repo}](https://github.com/{repo})"
         )
