@@ -1,3 +1,9 @@
+# Esegnorelli | Devlinks
+
+**Evandro Segnorelli** · analista de dados e programador · SQL, TypeScript, dashboards e automação
+
+[GitHub](https://github.com/Esegnorelli) · [LinkedIn](https://linkedin.com/in/Esegnorelli) · [Instagram](https://instagram.com/Esegnorelli) · [Twitter](https://twitter.com/Esegnorelli) · [Devlinks](https://esegnorelli.github.io/devlinks/)
+
 Sou analista de dados e programador na rede **Hora do Pastel**, onde comecei como gerente de loja. Também sou analista administrativo no **Conglomerado BGPF Group**.
 
 Antes de programar, trabalhei com análise de dados na Endosul, vendas na Kipel e gerência no McDonald's (Arcos Dourados). Hoje junto as duas coisas: SQL, TypeScript, dashboards e scripts que automatizam a rotina da operação.
@@ -6,12 +12,19 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 
 <img src="assets/painel.svg" width="100%" alt="Painel dos últimos 12 meses: calendário de contribuições, visão geral da atividade, horário dos commits, linguagens, trajetória profissional (Endosul, Kipel, McDonald's, Hora do Pastel e BGPF Group) e formação (FSG, Feevale e UFBRA). Atualizado a cada 6 horas." />
 
+### Stack
+
+- **Dados:** SQL, PostgreSQL (PL/pgSQL), Supabase, dashboards de operação
+- **Web:** TypeScript, Next.js, JavaScript, HTML e CSS
+- **Automação:** Python, GitHub Actions
+- **Desktop:** Linux, Hyprland, [Omarchy](https://omarchy.org), QML
+
 ### Projetos públicos
 
 - [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
 - [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · Next.js + Supabase + Vercel
-- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
-- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks)
+- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes: tema para o Omarchy
+- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks) - Agregador de links como cartão de visitas online, com tema claro/escuro
 
 <details>
 <summary>Mais atividade</summary>
@@ -19,8 +32,8 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 #### Repositórios por data de criação
 
 - [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time.
-- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes — theme for Omarchy
-- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks)
+- [Esegnorelli/omarchy-dunes-theme](https://github.com/Esegnorelli/omarchy-dunes-theme) - Dunes: tema para o Omarchy
+- [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks) - Agregador de links como cartão de visitas online, com tema claro/escuro
 - [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · Next.js + Supabase + Vercel
 
 #### Pull requests recentes
