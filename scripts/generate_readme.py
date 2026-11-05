@@ -90,15 +90,22 @@ def recent_prs(username: str, token: str) -> str:
                 raise
             events = []
         for event in events:
-            if event.get("type") != "PullRequestEvent":
+            payload = event.get("payload") or {}
+            repo = (event.get("repo") or {}).get("name")
+            number = payload.get("number")
+            # Events are the user's own actions on any PR: "closed" and "merged"
+            # also cover other people's, so only "opened" marks one they wrote.
+            # The payload carries the PR's number but neither title nor URL.
+            if event.get("type") != "PullRequestEvent" or payload.get("action") != "opened" or not repo or not number:
                 continue
-            pr = (event.get("payload") or {}).get("pull_request") or {}
-            if not pr.get("html_url"):
-                continue
+            try:
+                title = fetch(f"/repos/{quote(repo, safe='/')}/pulls/{number}", token).get("title")
+            except FetchError:
+                title = None
             items.append({
-                "title": pr.get("title") or "Pull request",
-                "html_url": pr.get("html_url"),
-                "repository_url": "https://api.github.com/repos/" + event.get("repo", {}).get("name", ""),
+                "title": title or "Pull request",
+                "html_url": f"https://github.com/{repo}/pull/{number}",
+                "repository_url": f"{API}/repos/{repo}",
             })
             if len(items) == 5:
                 break
