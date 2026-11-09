@@ -21,6 +21,7 @@ Nas horas vagas, mexo no meu desktop Linux com [Omarchy](https://omarchy.org): f
 
 ### Projetos públicos
 
+- [Esegnorelli/hora-do-pastel-painel](https://github.com/Esegnorelli/hora-do-pastel-painel) · JavaScript · [site](https://hora-do-pastel-painel.vercel.app)
 - [Esegnorelli/devlinks](https://github.com/Esegnorelli/devlinks) - Agregador de links como cartão de visitas online, com tema claro/escuro · HTML · [site](https://esegnorelli.github.io/devlinks/)
 - [Esegnorelli/omarchy-ilha](https://github.com/Esegnorelli/omarchy-ilha) - Floating island bar for Omarchy: a clock at rest, one status line on hover, one panel at a time. · QML
 - [Esegnorelli/hora-do-pastel-faturamento](https://github.com/Esegnorelli/hora-do-pastel-faturamento) - Dashboard de faturamento da rede Hora do Pastel · React + Vite + Supabase + Vercel · TypeScript · [site](https://hora-do-pastel-faturamento.vercel.app)
